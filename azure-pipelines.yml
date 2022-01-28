@@ -4,31 +4,55 @@
 # https://docs.microsoft.com/azure/devops/pipelines/languages/dotnet-core
 
 trigger:
-- main
+- '*'
 
 pool:
-  vmImage: 'windows-latest'
+  vmImage: 'ubuntu-20.04'
+  demands: # mendatory tools
+  - npm
 
 variables:
-  solution: '**/*.sln'
-  buildPlatform: 'Any CPU'
   buildConfiguration: 'Release'
 
 steps:
-- task: NuGetToolInstaller@1
-
-- task: NuGetCommand@2
+#Although .NET is present in the system, with the task you specif. version to be used
+- task: UseDotNet@2
+  displayName: 'Use .NET SDK 5.x'
   inputs:
-    restoreSolution: '$(solution)'
+    packageType: sdk
+    version: '5.x'
 
-- task: VSBuild@1
-  inputs:
-    solution: '$(solution)'
-    msbuildArgs: '/p:DeployOnBuild=true /p:WebPublishMethod=Package /p:PackageAsSingleFile=true /p:SkipInvalidConfigurations=true /p:DesktopBuildPackageLocation="$(build.artifactStagingDirectory)\WebApp.zip" /p:DeployIisAppPath="Default Web Site"'
-    platform: '$(buildPlatform)'
-    configuration: '$(buildConfiguration)'
 
-- task: VSTest@2
+- task: Npm@1
+  displayName: 'Run npm install'
   inputs:
-    platform: '$(buildPlatform)'
-    configuration: '$(buildConfiguration)'
+    verbose: false
+
+- script: './node_modules/.bin/node-sass Tailspin.SpaceGame.Web/wwwroot --output Tailspin.SpaceGame.Web/wwwroot'
+  displayName: 'Compile Sass assets'
+
+- task: gulp@1
+  displayName: 'Run gulp tasks'
+ 
+  #Built-in variables are used:
+  #$(Build.DefinitionName) specifies the name of the build pipeline. For example, "SpaceGame-Web-CI."
+  #$(Build.BuildId) is a numeric identifier for the completed build, like 115.
+  #$(Build.BuildNumber) is name of the completed build. You can configure the format, 
+  #but by default the build number includes the current date followed by the build number for that day. An example build number is "20190329.1."
+- script: 'echo "$(Build.DefinitionName), $(Build.BuildId), $(Build.BuildNumber)" > buildinfo.txt'
+  displayName: 'Write build info'
+  workingDirectory: Tailspin.SpaceGame.Web/wwwroot
+
+# Every command has to be put in separate task
+- task: DotNetCoreCLI@2
+  displayName: 'Restore project dependencies'
+  inputs:
+    command: 'restore'
+    projects: '**/*.csproj'
+
+- task: DotNetCoreCLI@2
+  displayName: 'Build the project - Release'
+  inputs:
+    command: 'build'
+    arguments: '--no-restore --configuration Release'
+    projects: '**/*.csproj'
